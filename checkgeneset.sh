@@ -94,7 +94,9 @@ EOF
     echo "#Number of input symbols are $input_count
 #Number of output symbols are $output_count
 $io_diff_message"
-    echo "$(echo "$warnings" | sed "/^$/d")"
+    if [ -n "${warnings-}" ]; then
+        echo "$(echo "$warnings" | sed "/^$/d")"
+    fi
     echo "$(echo "$versions" | sed "/^$/d" | sort -u)"
     echo "Input_symbol\tApproved_symbol\tSymbol\tStatus\tSource\tAssembly\tChrom\tStart\tEnd"
     echo "$(echo "$rows" | sed "/^$/d")"
