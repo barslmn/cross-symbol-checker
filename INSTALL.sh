@@ -27,12 +27,12 @@ RefSeq  GRCh37 https://ftp.ncbi.nlm.nih.gov/refseq/H_sapiens/annotation/GRCh37_l
 RefSeq  GRCh38 https://ftp.ncbi.nlm.nih.gov/refseq/H_sapiens/annotation/GRCh38_latest/refseq_identifiers/GRCh38_latest_genomic.gff.gz
 RefSeq  T2T    https://ftp.ncbi.nlm.nih.gov/refseq/H_sapiens/annotation/annotation_releases/110/GCF_009914755.1_T2T-CHM13v2.0/GCF_009914755.1_T2T-CHM13v2.0_genomic.gff.gz
 Ensembl GRCh37 https://ftp.ensembl.org/pub/grch37/release-108/gff3/homo_sapiens/Homo_sapiens.GRCh37.87.gff3.gz
-Ensembl GRCh38 https://ftp.ensembl.org/pub/current_gff3/homo_sapiens/Homo_sapiens.GRCh38.108.gff3.gz
+Ensembl GRCh38 https://ftp.ensembl.org/pub/current_gff3/homo_sapiens/Homo_sapiens.GRCh38.108.chr_patch_hapl_scaff.gff3.gz
 Ensembl T2T    https://ftp.ensembl.org/pub/rapid-release/species/Homo_sapiens/GCA_009914755.4/geneset/2022_07/Homo_sapiens-GCA_009914755.4-2022_07-genes.gff3.gz
 "
 echo "$annotations" | sed '/^$/d' | while read -r source assembly url; do
-    echo "Downloading $source annotation for assembly $assembly";
-    echo "Downloading from $url";
+    log "INFO" "Downloading $source annotation for assembly $assembly";
+    log "INFO" "Downloading from $url";
 
     case "$source" in
         "RefSeq")
@@ -51,7 +51,7 @@ echo "$annotations" | sed '/^$/d' | while read -r source assembly url; do
                         # printf "%s\t%s\t%s\t%s\n", chrom[1], $4, $5, gene[1]}
                         printf "%s\t%s\t%s\t%s\n", $1, $4, $5, gene[1]}' |
                 gzip -c > $source.$assembly.bed.gz;
-            echo "BED file created at $source.$assembly.bed.gz";
+            log "INFO" "BED file created at $source.$assembly.bed.gz";
             ;;
         "Ensembl")
             wget -q -O- "$url" | zcat | awk -F"\t" \
@@ -63,7 +63,7 @@ echo "$annotations" | sed '/^$/d' | while read -r source assembly url; do
                         split(info[2],gene,";");
                         printf "chr%s\t%s\t%s\t%s\n", $1, $4, $5, gene[1]}' |
                 gzip -c > $source.$assembly.bed.gz
-            echo "BED file created at $source.$assembly.bed.gz";
+            log "INFO" "BED file created at $source.$assembly.bed.gz";
             ;;
     esac
 done
