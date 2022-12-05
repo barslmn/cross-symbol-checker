@@ -51,6 +51,15 @@ export GSC_SOURCES
 export GSC_ASSEMBLIES
 
 main() {
+    echo "#Input_symbol: Initial symbol entered.
+#Approved_symbol: Current symbol approved by HGNC for input symbol.
+#Symbol: This is the symbol found in annotation source. This is most likely will be the approved symbol however, might also be the alias, previous, or the withdrawn symbol.
+#Status: Status of the Symbol column. Either approved, alias, previous, or withdrawn.
+#Source: Annotation source.
+#Assembly: Target assembly.
+#Chrom: name of the chromosome.
+#Start: start position of the gene.
+#End: end position of the gene."
     input_count=$(echo "$@" | wc -w)
     versions=""
     warnings=""
@@ -82,16 +91,7 @@ EOF
         io_diff_message="#No difference between input and output counts."
     fi
 
-    echo "#Input_symbol: Initial symbol entered.
-#Approved_symbol: Current symbol approved by HGNC for input symbol.
-#Symbol: This is the symbol found in annotation source. This is most likely will be the approved symbol however, might also be the alias, previous, or the withdrawn symbol.
-#Status: Status of the Symbol column. Either approved, alias, previous, or withdrawn.
-#Source: Annotation source.
-#Assembly: Target assembly.
-#Chrom: name of the chromosome.
-#Start: start position of the gene.
-#End: end position of the gene.
-#Number of input symbols are $input_count
+    echo "#Number of input symbols are $input_count
 #Number of output symbols are $output_count
 $io_diff_message"
     echo "$(echo "$warnings" | sed "/^$/d")"
