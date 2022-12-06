@@ -219,7 +219,7 @@ log "DEBUG" "TIME Checking withdrawn symbol took $runtime seconds"
 
 start=$(date +%s)
 
-if [ -z "${matches-}" ]; then
+if [ -z "${matches+}" ]; then
     log "WARN" "couldn't find an approved symbol for $symbol"
     echo "WARNING couldn't find an approved symbol for $symbol"
     is_date=$(date -d "$symbol" 2>1 | grep -v "invalid")
