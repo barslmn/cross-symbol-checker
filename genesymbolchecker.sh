@@ -219,26 +219,6 @@ log "DEBUG" "TIME Checking withdrawn symbol took $runtime seconds"
 
 start=$(date +%s)
 
-if [ -z "${matches+}" ]; then
-    log "WARN" "couldn't find an approved symbol for $symbol"
-    echo "WARNING couldn't find an approved symbol for $symbol"
-    is_date=$(date -d "$symbol" 2>1 | grep -v "invalid")
-    if [ -z "$is_date"]; then
-        log "INFO" "doesn't look like a date."
-    else
-        log "WARN" "This is a date"
-        echo "WARNING This is a date"
-    fi
-    # TODO warn about this symbol
-    exit
-fi
-
-end=$(date +%s)
-runtime=$((end - start))
-log "DEBUG" "TIME Checking if any approved symbol found took $runtime seconds"
-
-start=$(date +%s)
-
 # We collect all possible approved_symbol(s) which we expect to be only one.
 # However we check in case a symbol maps to multiple symbols.
 if [ $(echo "$matches" | sed '/^$/d' | sort -u | wc -l) -eq 1 ]; then # this is what we expect.
@@ -285,6 +265,26 @@ fi
 end=$(date +%s)
 runtime=$((end - start))
 log "DEBUG" "TIME Checking if more than one approved symbol found took $runtime seconds"
+
+start=$(date +%s)
+
+if [ -z "${approved_symbol-}" ]; then
+    log "WARN" "couldn't find an approved symbol for $symbol"
+    echo "WARNING couldn't find an approved symbol for $symbol"
+    is_date=$(date -d "$symbol" 2>1 | grep -v "invalid")
+    if [ -z "$is_date"]; then
+        log "INFO" "doesn't look like a date."
+    else
+        log "WARN" "This is a date"
+        echo "WARNING This is a date"
+    fi
+    # TODO warn about this symbol
+    exit
+fi
+
+end=$(date +%s)
+runtime=$((end - start))
+log "DEBUG" "TIME Checking if any approved symbol found took $runtime seconds"
 
 start=$(date +%s)
 
