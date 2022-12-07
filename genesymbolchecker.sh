@@ -131,7 +131,10 @@ else
     assemblies="$GSC_ASSEMBLIES"
 fi
 
-symbol=$1
+symbol=$(echo "$1" | tr '[:lower:]' '[:upper:]' | awk '/C([1-9]|1[0-9]|2[0-2]|X|Y)ORF[0-9]+/ {gsub("ORF", "orf", $0)} 1')
+if [ "$symbol" != "$1" ]; then
+    echo "WARNING $1 capitalization changed to $symbol"
+fi
 matches=""
 
 approved=$(zcat data/hgnc.gz | awk -F "\t" -v symbol=$symbol '$2==symbol {print}')
@@ -224,13 +227,13 @@ start=$(date +%s)
 if [ $(echo "$matches" | sed '/^$/d' | sort -u | wc -l) -eq 1 ]; then # this is what we expect.
     case "$matches" in
         "Approved*")
-            log "INFO" "$1 was already an approved symbol."
+            log "INFO" "$symbol was already an approved symbol."
             ;;
         "Prev*")
-            log "INFO" "previous symbol $1 mapped to an approved symbol."
+            log "INFO" "previous symbol $symbol mapped to an approved symbol."
             ;;
         "Alias*")
-            log "INFO" "alias symbol $1 mapped to an approved symbol."
+            log "INFO" "alias symbol $symbol mapped to an approved symbol."
             ;;
     esac
     approved_symbol=$(echo $matches | sed '/^$/d' | cut -f 2)
@@ -240,21 +243,21 @@ else
     # Some approved symbols are alias to other symbols
     # We are going to handle this case by picking the
     # original input.
-    log "WARN" "$1 mapped to multiple approved symbols! $(echo "$matches" | sed '/^$/d' | cut -f 2 | tr '\n' ' ')"
-    echo "WARNING $1 mapped to multiple approved symbols! $(echo "$matches" | sed '/^$/d' | cut -f 2 | tr '\n' ' ')"
+    log "WARN" "$symbol mapped to multiple approved symbols! $(echo "$matches" | sed '/^$/d' | cut -f 2 | tr '\n' ' ')"
+    echo "WARNING $symbol mapped to multiple approved symbols! $(echo "$matches" | sed '/^$/d' | cut -f 2 | tr '\n' ' ')"
     while read -r found_in appr_sym; do
         case $found_in in
             "Approved")
-                log "INFO" "Orginal input $1 already was an approved symbol. Carrying out with this symbol."
+                log "INFO" "Orginal input $symbol already was an approved symbol. Carrying out with this symbol."
                 approved_symbol="$appr_sym"
                 echo "APPROVED\t$approved_symbol"
                 ;;
             "Prev")
-                log "WARN" "$1 was also $found_in symbol for approved symbol $appr_sym."
-                echo "WARNING $1 was also $found_in symbol for approved symbol $appr_sym."
+                log "WARN" "$symbol was also $found_in symbol for approved symbol $appr_sym."
+                echo "WARNING $symbol was also $found_in symbol for approved symbol $appr_sym."
                 ;;
             "Alias")
-                log "INFO" "$1 was also $found_in symbol for approved symbol $appr_sym."
+                log "INFO" "$symbol was also $found_in symbol for approved symbol $appr_sym."
                 ;;
         esac
     done <<-EOF
@@ -269,10 +272,10 @@ log "DEBUG" "TIME Checking if more than one approved symbol found took $runtime 
 start=$(date +%s)
 
 if [ -z "${approved_symbol-}" ]; then
-    log "WARN" "couldn't find an approved symbol for $symbol"
-    echo "WARNING couldn't find an approved symbol for $symbol"
+    log "WARN" "No approved symbol found for $symbol"
+    echo "WARNING No approved symbol found for $symbol"
     is_date=$(date -d "$symbol" 2>1 | grep -v "invalid")
-    if [ -z "$is_date"]; then
+    if [ -z "$is_date" ]; then
         log "INFO" "doesn't look like a date."
     else
         log "WARN" "This is a date"
