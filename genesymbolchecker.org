@@ -22,7 +22,7 @@ done
 wget -O- -q http://ftp.ebi.ac.uk/pub/databases/genenames/hgnc/tsv/withdrawn.txt | gzip -c > withdrawn.gz
 
 # Entrez gene symbols
-wget -O- -q https://ftp.ncbi.nih.gov/gene/DATA/GENE_INFO/Mammalia/Homo_sapiens.gene_info.gz | gzip -c > entrez.gz
+wget -O- -q https://ftp.ncbi.nih.gov/gene/DATA/GENE_INFO/Mammalia/Homo_sapiens.gene_info.gz > entrez.gz
 
 
 # Annotation files, download and parse
@@ -328,21 +328,20 @@ if [ $(echo "$matches" | sed '/^$/d' | sort -u | wc -l) -eq 1 ]; then # this is 
             log "INFO" "$symbol was already an approved symbol."
             ;;
         "Prev*")
-            log "INFO" "previous symbol $symbol mapped to an approved symbol."
+            log "INFO" "previous symbol $symbol matched with an approved symbol."
             ;;
         "Alias*")
-            log "INFO" "alias symbol $symbol mapped to an approved symbol."
+            log "INFO" "alias symbol $symbol matched with an approved symbol."
             ;;
     esac
     approved_symbol=$(echo $matches | sed '/^$/d' | cut -f 2)
     echo "APPROVED\t$approved_symbol"
-
-else
+elif [ $(echo "$matches" | sed '/^$/d' | sort -u | wc -l) -gt 1 ]; then # this is what we expect.
     # Some approved symbols are alias to other symbols
     # We are going to handle this case by picking the
     # original input.
-    log "WARN" "$symbol mapped to multiple approved symbols! $(echo "$matches" | sed '/^$/d' | cut -f 2 | tr '\n' ' ')"
-    echo "WARNING $symbol mapped to multiple approved symbols! $(echo "$matches" | sed '/^$/d' | cut -f 2 | tr '\n' ' ')"
+    log "WARN" "$symbol matched with multiple approved symbols! $(echo "$matches" | sed '/^$/d' | cut -f 2 | tr '\n' ' ')"
+    echo "WARNING $symbol matched with multiple approved symbols! $(echo "$matches" | sed '/^$/d' | cut -f 2 | tr '\n' ' ')"
     while read -r found_in appr_sym; do
         case $found_in in
             "Approved")
@@ -608,7 +607,7 @@ EOF
         elif [ $io_diff -lt 0 ]; then
             io_diff_message="#There are $(( io_diff * -1 )) more inputs then outputs. Check warnings for more info."
         else
-            io_diff_message="#There are no multiple entries for symbols."
+            io_diff_message="#There are no duplications for the symbols."
         fi
     fi
 
@@ -626,16 +625,19 @@ EOF
 #Number of output symbols are $output_count
 $unmatched_symbols_message
 $io_diff_message"
-    echo "$(echo "$warnings" | sed "/^$/d")"
-    echo "$(echo "$versions" | sed "/^$/d" | sort -u)"
-    echo "Input_symbol\tApproved_symbol\tSymbol\tStatus\tSource\tAssembly\tChrom\tStart\tEnd"
-    echo "$(echo "$rows" | sed "/^$/d")"
+    echo "$(echo "$warnings" | sed "/^$/d" | grep . || echo "#There were no warnings.")"
+    if [ -z "${rows:-}" ]; then
+        echo "No output was produced!"
+    else
+        echo "$(echo "$versions" | sed "/^$/d" | sort -u  | grep . || echo "#There is no version info")"
+        echo "Input_symbol\tApproved_symbol\tSymbol\tStatus\tSource\tAssembly\tChrom\tStart\tEnd"
+        echo "$(echo "$rows" | sed "/^$/d")"
+    fi
 }
 
 main "$@"
 
 #+end_src
-
 
 
 #+begin_src shell :tangle tests.sh :shebang #!/bin/sh

@@ -97,7 +97,7 @@ EOF
         elif [ $io_diff -lt 0 ]; then
             io_diff_message="#There are $(( io_diff * -1 )) more inputs then outputs. Check warnings for more info."
         else
-            io_diff_message="#There are no multiple entries for symbols."
+            io_diff_message="#There are no duplications for the symbols."
         fi
     fi
 
@@ -115,10 +115,14 @@ EOF
 #Number of output symbols are $output_count
 $unmatched_symbols_message
 $io_diff_message"
-    echo "$(echo "$warnings" | sed "/^$/d")"
-    echo "$(echo "$versions" | sed "/^$/d" | sort -u)"
-    echo "Input_symbol\tApproved_symbol\tSymbol\tStatus\tSource\tAssembly\tChrom\tStart\tEnd"
-    echo "$(echo "$rows" | sed "/^$/d")"
+    echo "$(echo "$warnings" | sed "/^$/d" | grep . || echo "#There were no warnings.")"
+    if [ -z "${rows:-}" ]; then
+        echo "No output was produced!"
+    else
+        echo "$(echo "$versions" | sed "/^$/d" | sort -u  | grep . || echo "#There is no version info")"
+        echo "Input_symbol\tApproved_symbol\tSymbol\tStatus\tSource\tAssembly\tChrom\tStart\tEnd"
+        echo "$(echo "$rows" | sed "/^$/d")"
+    fi
 }
 
 main "$@"

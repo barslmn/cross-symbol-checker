@@ -230,21 +230,20 @@ if [ $(echo "$matches" | sed '/^$/d' | sort -u | wc -l) -eq 1 ]; then # this is 
             log "INFO" "$symbol was already an approved symbol."
             ;;
         "Prev*")
-            log "INFO" "previous symbol $symbol mapped to an approved symbol."
+            log "INFO" "previous symbol $symbol matched with an approved symbol."
             ;;
         "Alias*")
-            log "INFO" "alias symbol $symbol mapped to an approved symbol."
+            log "INFO" "alias symbol $symbol matched with an approved symbol."
             ;;
     esac
     approved_symbol=$(echo $matches | sed '/^$/d' | cut -f 2)
     echo "APPROVED\t$approved_symbol"
-
-else
+elif [ $(echo "$matches" | sed '/^$/d' | sort -u | wc -l) -gt 1 ]; then # this is what we expect.
     # Some approved symbols are alias to other symbols
     # We are going to handle this case by picking the
     # original input.
-    log "WARN" "$symbol mapped to multiple approved symbols! $(echo "$matches" | sed '/^$/d' | cut -f 2 | tr '\n' ' ')"
-    echo "WARNING $symbol mapped to multiple approved symbols! $(echo "$matches" | sed '/^$/d' | cut -f 2 | tr '\n' ' ')"
+    log "WARN" "$symbol matched with multiple approved symbols! $(echo "$matches" | sed '/^$/d' | cut -f 2 | tr '\n' ' ')"
+    echo "WARNING $symbol matched with multiple approved symbols! $(echo "$matches" | sed '/^$/d' | cut -f 2 | tr '\n' ' ')"
     while read -r found_in appr_sym; do
         case $found_in in
             "Approved")

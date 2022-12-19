@@ -18,7 +18,7 @@ done
 wget -O- -q http://ftp.ebi.ac.uk/pub/databases/genenames/hgnc/tsv/withdrawn.txt | gzip -c > withdrawn.gz
 
 # Entrez gene symbols
-wget -O- -q https://ftp.ncbi.nih.gov/gene/DATA/GENE_INFO/Mammalia/Homo_sapiens.gene_info.gz | gzip -c > entrez.gz
+wget -O- -q https://ftp.ncbi.nih.gov/gene/DATA/GENE_INFO/Mammalia/Homo_sapiens.gene_info.gz > entrez.gz
 
 
 # Annotation files, download and parse
