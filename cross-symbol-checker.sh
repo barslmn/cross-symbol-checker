@@ -1,99 +1,17 @@
-#+title: Gene Symbol Checker
-#+auto_tangle: t
-
-* Downloading the data files
-#+begin_src shell :results drawer :async t :tangle INSTALL.sh :shebang #!/bin/sh
-mkdir -p data
-cd data
-# HGNC approved symbols
-wget -O- -q http://ftp.ebi.ac.uk/pub/databases/genenames/hgnc/tsv/hgnc_complete_set.txt | gzip -c > hgnc.gz
-# map synonyms and previous symbols to current symbols
-OTHERSYMBOLS="
-prev
-alias
-"
-echo "$OTHERSYMBOLS" | sed '/^$/d' | while read -r other;
-do
-    current=$(zcat hgnc.gz | sed 1q | tr $'\t' '\n' | nl | grep -m1 "symbol" | cut -f1 | tr -d " ")
-    other_col=$(zcat hgnc.gz | sed 1q | tr $'\t' '\n' | nl | grep "$other"_symbol | cut -f1 | tr -d " ")
-    zcat hgnc.gz | tr -d '"' | awk -F "\t" -v current=$current -v other_col=$other_col '{split($other_col, others,"|"); for (o in others) {printf "%s\t%s\n", others[o], $current}}' | gzip -c > $other.gz
-done
-# HGNC withdrawn symbols
-wget -O- -q http://ftp.ebi.ac.uk/pub/databases/genenames/hgnc/tsv/withdrawn.txt | gzip -c > withdrawn.gz
-
-# Entrez gene symbols
-wget -O- -q https://ftp.ncbi.nih.gov/gene/DATA/GENE_INFO/Mammalia/Homo_sapiens.gene_info.gz > entrez.gz
+#!/bin/sh
+# Validate gene symbol
+# Steps:
+# 1. Validate the gene symbol.
+#    1. Check if the given symbol is in the approved symbols.
+#    2. Check if the given symbol is an alias symbol.
+#    3. Check if the given symbol is a previous symbol.
+#    4. Check if the given symbol is withdrawn, split or merged.
+#    5. Get the previous, alias or withdrawn symbols
+# 2. Check symbol in annotation sources.
+# 3. Check if prev, alias withdrawn symbols are in annotation sources.
 
 
-# Annotation files, download and parse
-annotations="
-RefSeq  GRCh37 https://ftp.ncbi.nlm.nih.gov/refseq/H_sapiens/annotation/GRCh37_latest/refseq_identifiers/GRCh37_latest_genomic.gff.gz
-RefSeq  GRCh38 https://ftp.ncbi.nlm.nih.gov/refseq/H_sapiens/annotation/GRCh38_latest/refseq_identifiers/GRCh38_latest_genomic.gff.gz
-RefSeq  T2T    https://ftp.ncbi.nlm.nih.gov/refseq/H_sapiens/annotation/annotation_releases/110/GCF_009914755.1_T2T-CHM13v2.0/GCF_009914755.1_T2T-CHM13v2.0_genomic.gff.gz
-Ensembl GRCh37 https://ftp.ensembl.org/pub/grch37/release-108/gff3/homo_sapiens/Homo_sapiens.GRCh37.87.gff3.gz
-Ensembl GRCh38 https://ftp.ensembl.org/pub/current_gff3/homo_sapiens/Homo_sapiens.GRCh38.108.chr_patch_hapl_scaff.gff3.gz
-Ensembl T2T    https://ftp.ensembl.org/pub/rapid-release/species/Homo_sapiens/GCA_009914755.4/geneset/2022_07/Homo_sapiens-GCA_009914755.4-2022_07-genes.gff3.gz
-"
-echo "$annotations" | sed '/^$/d' | while read -r source assembly url; do
-    log "INFO" "Downloading $source annotation for assembly $assembly";
-    log "INFO" "Downloading from $url";
-
-    case "$source" in
-        "RefSeq")
-            wget -q -O- "$url" \
-                | zcat \
-                | awk -F"\t" \
-                    '
-                    /^#!/ {print}
-                    /^##/ {next}
-                    $3~/gene/ {
-                        # sub(/^NC_[0]+/, "chr");
-                        # sub(/^chr23/, "chrX"); sub(/^chr24/, "chrY");
-                        # split($1,chrom,".");
-                        split($9,info,"gene=");
-                        split(info[2],gene,";");
-                        # printf "%s\t%s\t%s\t%s\n", chrom[1], $4, $5, gene[1]}
-                        printf "%s\t%s\t%s\t%s\n", $1, $4, $5, gene[1]}' |
-                gzip -c > $source.$assembly.bed.gz;
-            log "INFO" "BED file created at $source.$assembly.bed.gz";
-            ;;
-        "Ensembl")
-            wget -q -O- "$url" | zcat | awk -F"\t" \
-                    '
-                    /^#!/ {print}
-                    /^##/ {next}
-                    $3~/gene/ {
-                        split($9,info,"Name=");
-                        split(info[2],gene,";");
-                        printf "chr%s\t%s\t%s\t%s\n", $1, $4, $5, gene[1]}' |
-                gzip -c > $source.$assembly.bed.gz
-            log "INFO" "BED file created at $source.$assembly.bed.gz";
-            ;;
-    esac
-done
-
-#+end_src
-
-#+begin_src shell :results drawer :async t
-❯ zcat data/hgnc.gz| awk -F "\t" '{print $2}' | sed 1d | grep -o . | sort -u
-#+end_src
-
-
-TODO Count the number of inputs and outputs.
-
-
-** Validate gene symbol
-Steps:
-1. Validate the gene symbol.
-   1. Check if the given symbol is in the approved symbols.
-   2. Check if the given symbol is an alias symbol.
-   3. Check if the given symbol is a previous symbol.
-   4. Check if the given symbol is withdrawn, split or merged.
-   5. Get the previous, alias or withdrawn symbols
-2. Check symbol in annotation sources.
-3. Check if prev, alias withdrawn symbols are in annotation sources.
-
-#+begin_src shell :tangle genesymbolchecker.sh :shebang #!/bin/sh :comments both
+# [[file:cross-symbol-checker.org::*Validate gene symbol][Validate gene symbol:1]]
 start=$(date +%s)
 
 set -o errexit
@@ -140,7 +58,7 @@ fancy_message() (
             printf "  [${RED}!${RESET}] ERROR! %s\n" "${MESSAGE}"
             exit 1
             ;;
-        ,*) printf "  [?] UNKNOWN: %s\n" "${MESSAGE}" ;;
+        *) printf "  [?] UNKNOWN: %s\n" "${MESSAGE}" ;;
     esac
 )
 
@@ -191,11 +109,8 @@ log() {
 end=$(date +%s)
 runtime=$((end - start))
 log "DEBUG" "TIME Startup took $runtime seconds"
+# Validate gene symbol:1 ends here
 
-#+end_src
-
-*** Check if the given symbol is in the approved symbols.
-#+begin_src shell :tangle genesymbolchecker.sh
 start=$(date +%s)
 
 if [ -z "${GSC_SOURCES-}" ]; then
@@ -235,10 +150,7 @@ fi
 end=$(date +%s)
 runtime=$((end - start))
 log "DEBUG" "TIME Checking approved symbol took $runtime seconds"
-#+end_src
 
-*** Check if the given symbol is an alias symbol.
-#+begin_src shell :tangle genesymbolchecker.sh
 start=$(date +%s)
 
 alias=$(zcat data/alias.gz | awk -F "\t" -v symbol=$symbol '$1==symbol {print}')
@@ -254,10 +166,7 @@ fi
 end=$(date +%s)
 runtime=$((end - start))
 log "DEBUG" "TIME Checking alias symbol took $runtime seconds"
-#+end_src
 
-*** Check if the given symbol is a previous symbol.
-#+begin_src shell :tangle genesymbolchecker.sh
 start=$(date +%s)
 
 prev=$(zcat data/prev.gz | awk -F "\t" -v symbol=$symbol '$1==symbol {print}')
@@ -273,10 +182,7 @@ fi
 end=$(date +%s)
 runtime=$((end - start))
 log "DEBUG" "TIME Checking previous symbol took $runtime seconds"
-#+end_src
 
-*** Check if the given symbol is withdrawn, split or merged.
-#+begin_src shell :tangle genesymbolchecker.sh
 start=$(date +%s)
 
 withdrawn=$(zcat data/withdrawn.gz | awk -F "\t" -v symbol=$symbol '$3==symbol {print}')
@@ -313,11 +219,7 @@ fi
 end=$(date +%s)
 runtime=$((end - start))
 log "DEBUG" "TIME Checking withdrawn symbol took $runtime seconds"
-#+end_src
 
-
-*** Get the approved symbol
-#+begin_src shell :tangle genesymbolchecker.sh
 start=$(date +%s)
 
 # We collect all possible approved_symbol(s) which we expect to be only one.
@@ -365,18 +267,13 @@ fi
 end=$(date +%s)
 runtime=$((end - start))
 log "DEBUG" "TIME Checking if more than one approved symbol found took $runtime seconds"
-#+end_src
 
-# TODO Handle if approved symbol is unset.
-1. Check for dates.
-
-#+begin_src shell :tangle genesymbolchecker.sh
 start=$(date +%s)
 
 if [ -z "${approved_symbol-}" ]; then
     log "WARN" "No approved symbol found for $symbol"
     echo "WARNING No approved symbol found for $symbol"
-    is_date=$(date -d "$symbol" 2>1 | grep -v "invalid")
+    is_date=$(date -d "$symbol" 2>&1 | grep -v "invalid")
     if [ -z "$is_date" ]; then
         log "INFO" "doesn't look like a date."
     else
@@ -390,12 +287,7 @@ fi
 end=$(date +%s)
 runtime=$((end - start))
 log "DEBUG" "TIME Checking if any approved symbol found took $runtime seconds"
-#+end_src
 
-
-*** Get the alias previous and withdrawn symbols
-
-#+begin_src shell :tangle genesymbolchecker.sh
 start=$(date +%s)
 
 unset alias
@@ -434,11 +326,7 @@ fi
 end=$(date +%s)
 runtime=$((end - start))
 log "DEBUG" "TIME Checking for other symbols took $runtime seconds"
-#+end_src
 
-** Check symbol in annotation sources
-
-#+begin_src shell :tangle genesymbolchecker.sh
 start=$(date +%s)
 
 
@@ -503,178 +391,4 @@ fi
 end=$(date +%s)
 runtime=$((end - start))
 log "DEBUG" "TIME Checking annotation sources took $runtime seconds"
-echo "$(echo "$table" | sed '/^$/d;s/^/TABLE\t/')"
-#+end_src
-
-This script takes multiple gene symbols as input and runs gene symbol checker and formats output.
-#+begin_src shell :tangle checkgeneset.sh :shebang #!/bin/sh
-
-set -o errexit
-set -o nounset
-if [ "${TRACE-0}" = "1" ]; then
-    set -o xtrace
-fi
-
-if [ "${1-}" = "help" ]; then
-    echo 'Usage: ./script.sh arg-one arg-two
-
-This is an awesome bash script to make your life better.
-
-'
-    exit
-fi
-
-cd "$(dirname "$0")"
-
-PARSED_ARGUMENTS=$(getopt -a -o s:a: -l source:,assembly: -- "$@")
-VALID_ARGUMENTS=$?
-if [ "$VALID_ARGUMENTS" != "0" ]; then
-    usage
-fi
-
-eval set -- "$PARSED_ARGUMENTS"
-while :; do
-    case "$1" in
-    -s | --source)
-        GSC_SOURCES="$2"
-        shift 2
-        ;;
-    -a | --assembly)
-        GSC_ASSEMBLIES="$2"
-        shift 2
-        ;;
-    # -- means the end of the arguments; drop this, and break out of the while loop
-    --)
-        shift
-        break
-        ;;
-    # If invalid options were passed, then getopt should have reported an error,
-    # which we checked as VALID_ARGUMENTS when getopt was called...
-    ,*)
-        echo "Unexpected option: $1 - this should not happen."
-        usage
-        ;;
-    esac
-done
-
-export GSC_SOURCES
-export GSC_ASSEMBLIES
-
-main() {
-    input_count=$(echo "$@" | wc -w)
-    versions=""
-    warnings=""
-    rows=""
-    for symbol in $(echo "$@"); do
-        while read -r line; do
-            case "$line" in
-                "VERSION"* )
-                    versions="$versions#$line\n"
-                    ;;
-                "WARNING"* )
-                    warnings="$warnings#$line\n"
-                    ;;
-                "TABLE	Present"* )
-                    rows="$rows$(echo "$line" | cut -f 3-11)\n"
-                    ;;
-            esac
-        done <<-EOF
-$(./genesymbolchecker.sh "$symbol")
-EOF
-    done
-
-    # Final checks about what is found and not.
-    io_diff_message="#No difference between input and output counts."
-    unmatched_symbols_message="#There are no unmatched symbols"
-
-    unmatched_symbols_count=$(echo "$warnings" | grep "No approved symbol found" | wc -l)
-    output_count=$(echo "$rows" | sed "/^$/d" | wc -l)
-
-    io_diff=$(( output_count - input_count + unmatched_symbols_count ))
-
-    if [ $unmatched_symbols_count -eq 0 ]; then
-        if [ $io_diff -gt 0 ]; then
-            io_diff_message="#There are $io_diff more outputs then inputs! this might happen if there are more than one symbol (e.g. both approved and an alias) for gene in the annotation"
-        elif [ $io_diff -lt 0 ]; then # This should not happen? Because there are no unmatched symbols
-            io_diff_message="#There are $(( io_diff * -1 )) more inputs then outputs. Check warnings for more info. This shouldn't have happened:?"
-        else
-            io_diff_message="#No difference between input and output counts."
-        fi
-    else
-        unmatched_symbols_message="#There is/are $unmatched_symbols_count unmatched symbol(s)."
-        if [ $io_diff -gt 0 ]; then
-            io_diff_message="#There are $io_diff more outputs then inputs! this might happen if there are more than one symbol (e.g. both approved and an alias) for gene in the annotation"
-        elif [ $io_diff -lt 0 ]; then
-            io_diff_message="#There are $(( io_diff * -1 )) more inputs then outputs. Check warnings for more info."
-        else
-            io_diff_message="#There are no duplications for the symbols."
-        fi
-    fi
-
-
-    echo "#Input_symbol: Initial symbol entered.
-#Approved_symbol: Current symbol approved by HGNC for input symbol.
-#Symbol: This is the symbol found in annotation source. This is most likely will be the approved symbol however, might also be the alias, previous, or the withdrawn symbol.
-#Status: Status of the Symbol column. Either approved, alias, previous, or withdrawn.
-#Source: Annotation source.
-#Assembly: Target assembly.
-#Chrom: name of the chromosome.
-#Start: start position of the gene.
-#End: end position of the gene.
-#Number of input symbols are $input_count
-#Number of output symbols are $output_count
-$unmatched_symbols_message
-$io_diff_message"
-    echo "$(echo "$warnings" | sed "/^$/d" | grep . || echo "#There were no warnings.")"
-    if [ -z "${rows:-}" ]; then
-        echo "No output was produced!"
-    else
-        echo "$(echo "$versions" | sed "/^$/d" | sort -u  | grep . || echo "#There is no version info")"
-        echo "Input_symbol\tApproved_symbol\tSymbol\tStatus\tSource\tAssembly\tChrom\tStart\tEnd"
-        echo "$(echo "$rows" | sed "/^$/d")"
-    fi
-}
-
-main "$@"
-
-#+end_src
-
-
-#+begin_src shell :tangle tests.sh :shebang #!/bin/sh
-dates="
-02/21/2018
-02/21/18
-21/02/2018
-21/02/18
-21-02-2018
-21-02-18
-02-21-2018
-02-21-18
-2018-02-21
-2/21/2018
-2/21/18
-21/2/2018
-21/2/18
-2-21-2018
-2-21-18
-21-2-2018
-21-2-18
-Feb 21, 2018
-February 21, 2018
-Feb 21, 2018
-February 21, 2018
-2018-02-21 12:00:00
-12:00:00
-2018-10-29 10:02:48 AM
-2018-10-29 07:30:20 PM
-"
-
-alias="
-"
-prev="
-"
-withdrawn="
-"
-#+end_src
-
-#+RESULTS:
+printf "$table\n" | sed '/^$/d;s/^/TABLE\t/'

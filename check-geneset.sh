@@ -69,7 +69,7 @@ main() {
                     ;;
             esac
         done <<-EOF
-$(./genesymbolchecker.sh "$symbol")
+$(./cross-symbol-checker.sh "$symbol")
 EOF
     done
 
