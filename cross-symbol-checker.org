@@ -1,118 +1,13 @@
 #+title: Cross Symbol Checker
 #+auto_tangle: t
 
-* Downloading the data files
-#+begin_src shell :results drawer :async t :tangle get-data.sh :shebang #!/bin/sh
-mkdir -p data
-cd data
-# HGNC approved symbols
-wget -O- -q http://ftp.ebi.ac.uk/pub/databases/genenames/hgnc/tsv/hgnc_complete_set.txt | gzip -c > hgnc.gz
-# map synonyms and previous symbols to current symbols
-OTHERSYMBOLS="
-prev
-alias
-"
-echo "$OTHERSYMBOLS" | sed '/^$/d' | while read -r other;
-do
-    current=$(zcat hgnc.gz | sed 1q | tr $'\t' '\n' | nl | grep -m1 "symbol" | cut -f1 | tr -d " ")
-    other_col=$(zcat hgnc.gz | sed 1q | tr $'\t' '\n' | nl | grep "$other"_symbol | cut -f1 | tr -d " ")
-    zcat hgnc.gz | tr -d '"' | awk -F "\t" -v current=$current -v other_col=$other_col '{split($other_col, others,"|"); for (o in others) {printf "%s\t%s\n", others[o], $current}}' | gzip -c > $other.gz
-done
-# HGNC withdrawn symbols
-wget -O- -q http://ftp.ebi.ac.uk/pub/databases/genenames/hgnc/tsv/withdrawn.txt | gzip -c > withdrawn.gz
 
-# Entrez gene symbols
-wget -O- -q https://ftp.ncbi.nih.gov/gene/DATA/GENE_INFO/Mammalia/Homo_sapiens.gene_info.gz > entrez.gz
+This is the main documentation for the software.
 
-
-# Annotation files, download and parse
-annotations="
-RefSeq  GRCh37 https://ftp.ncbi.nlm.nih.gov/refseq/H_sapiens/annotation/GRCh37_latest/refseq_identifiers/GRCh37_latest_genomic.gff.gz
-RefSeq  GRCh38 https://ftp.ncbi.nlm.nih.gov/refseq/H_sapiens/annotation/GRCh38_latest/refseq_identifiers/GRCh38_latest_genomic.gff.gz
-RefSeq  T2T    https://ftp.ncbi.nlm.nih.gov/refseq/H_sapiens/annotation/annotation_releases/110/GCF_009914755.1_T2T-CHM13v2.0/GCF_009914755.1_T2T-CHM13v2.0_genomic.gff.gz
-Ensembl GRCh37 https://ftp.ensembl.org/pub/grch37/release-108/gff3/homo_sapiens/Homo_sapiens.GRCh37.87.gff3.gz
-Ensembl GRCh38 https://ftp.ensembl.org/pub/current_gff3/homo_sapiens/Homo_sapiens.GRCh38.108.chr_patch_hapl_scaff.gff3.gz
-Ensembl T2T    https://ftp.ensembl.org/pub/rapid-release/species/Homo_sapiens/GCA_009914755.4/geneset/2022_07/Homo_sapiens-GCA_009914755.4-2022_07-genes.gff3.gz
-"
-echo "$annotations" | sed '/^$/d' | while read -r source assembly url; do
-    log "INFO" "Downloading $source annotation for assembly $assembly";
-    log "INFO" "Downloading from $url";
-
-    case "$source" in
-        "RefSeq")
-            wget -q -O- "$url" \
-                | zcat \
-                | awk -F"\t" \
-                    '
-                    /^#!/ {print}
-                    /^##/ {next}
-                    $3~/gene/ {
-                        # sub(/^NC_[0]+/, "chr");
-                        # sub(/^chr23/, "chrX"); sub(/^chr24/, "chrY");
-                        # split($1,chrom,".");
-                        split($9,info,"gene=");
-                        split(info[2],gene,";");
-                        # printf "%s\t%s\t%s\t%s\n", chrom[1], $4, $5, gene[1]}
-                        printf "%s\t%s\t%s\t%s\n", $1, $4, $5, gene[1]}' |
-                gzip -c > $source.$assembly.bed.gz;
-            log "INFO" "BED file created at $source.$assembly.bed.gz";
-            ;;
-        "Ensembl")
-            wget -q -O- "$url" | zcat | awk -F"\t" \
-                    '
-                    /^#!/ {print}
-                    /^##/ {next}
-                    $3~/gene/ {
-                        split($9,info,"Name=");
-                        split(info[2],gene,";");
-                        printf "chr%s\t%s\t%s\t%s\n", $1, $4, $5, gene[1]}' |
-                gzip -c > $source.$assembly.bed.gz
-            log "INFO" "BED file created at $source.$assembly.bed.gz";
-            ;;
-    esac
-done
-
-#+end_src
-
-#+begin_src shell :results drawer :async t
-❯ zcat data/hgnc.gz| awk -F "\t" '{print $2}' | sed 1d | grep -o . | sort -u
-#+end_src
-
-
-TODO Count the number of inputs and outputs.
-
-
-** Validate gene symbol
-Steps:
-1. Validate the gene symbol.
-   1. Check if the given symbol is in the approved symbols.
-   2. Check if the given symbol is an alias symbol.
-   3. Check if the given symbol is a previous symbol.
-   4. Check if the given symbol is withdrawn, split or merged.
-   5. Get the previous, alias or withdrawn symbols
-2. Check symbol in annotation sources.
-3. Check if prev, alias withdrawn symbols are in annotation sources.
-
-#+begin_src shell :tangle cross-symbol-checker.sh :shebang #!/bin/sh :comments both
-start=$(date +%s)
-
-set -o errexit
-set -o nounset
-if [ "${TRACE-0}" = "1" ]; then
-    set -o xtrace
-fi
-
-if [ "${1-}" = "help" ]; then
-    echo "Usage: ./script.sh symbols
-
-This is an awesome bash script to make your life better."
-    exit
-fi
-
-cd "$(dirname "$0")"
-
-if [ -z "${GSC_LOGLVL-}" ]; then
-    GSC_LOGLVL="INFO"
+** helper functions
+#+begin_src shell :results drawer :async t :tangle logger.sh :shebang #!/bin/sh
+if [ -z "${CSC_LOGLVL-}" ]; then
+    CSC_LOGLVL="INFO"
 fi
 
 fancy_message() (
@@ -163,7 +58,7 @@ get_log_level() {
     echo $lvl
 }
 
-LOGLVL=$(get_log_level $GSC_LOGLVL)
+LOGLVL=$(get_log_level $CSC_LOGLVL)
 # if [ "$LOGLVL" = 0 ]; then set -xv; fi
 
 log() {
@@ -187,6 +82,185 @@ log() {
         esac
     fi
 }
+#+end_src
+
+** Downloading the data files
+#+begin_src shell :results drawer :async t :tangle get-data.sh :shebang #!/bin/sh
+. ./logger.sh
+mkdir -p data
+cd data
+# HGNC approved symbols
+wget -O- -q http://ftp.ebi.ac.uk/pub/databases/genenames/hgnc/tsv/hgnc_complete_set.txt | gzip -c > hgnc.gz
+# map synonyms and previous symbols to current symbols
+OTHERSYMBOLS="
+prev
+alias
+"
+echo "$OTHERSYMBOLS" | sed '/^$/d' | while read -r other;
+do
+    current=$(zcat -f hgnc.gz | sed 1q | tr $'\t' '\n' | nl | grep -m1 "symbol" | cut -f1 | tr -d " ")
+    other_col=$(zcat -f hgnc.gz | sed 1q | tr $'\t' '\n' | nl | grep "$other"_symbol | cut -f1 | tr -d " ")
+    zcat -f hgnc.gz | tr -d '"' | awk -F "\t" -v current=$current -v other_col=$other_col '{split($other_col, others,"|"); for (o in others) {printf "%s\t%s\n", others[o], $current}}' | gzip -c > $other.gz
+done
+# HGNC withdrawn symbols
+wget -O- -q http://ftp.ebi.ac.uk/pub/databases/genenames/hgnc/tsv/withdrawn.txt | gzip -c > withdrawn.gz
+
+# Entrez gene symbols
+wget -O- -q https://ftp.ncbi.nih.gov/gene/DATA/GENE_INFO/Mammalia/Homo_sapiens.gene_info.gz > entrez.gz
+
+
+# Annotation files, download and parse
+annotations="
+RefSeq  GRCh37 latest https://ftp.ncbi.nlm.nih.gov/refseq/H_sapiens/annotation/GRCh37_latest/refseq_identifiers/GRCh37_latest_genomic.gff.gz
+RefSeq  GRCh38 latest https://ftp.ncbi.nlm.nih.gov/refseq/H_sapiens/annotation/GRCh38_latest/refseq_identifiers/GRCh38_latest_genomic.gff.gz
+RefSeq  T2T    latest https://ftp.ncbi.nlm.nih.gov/refseq/H_sapiens/annotation/annotation_releases/110/GCF_009914755.1_T2T-CHM13v2.0/GCF_009914755.1_T2T-CHM13v2.0_genomic.gff.gz
+Ensembl GRCh37 release97 https://ftp.ensembl.org/pub/grch37/release-97/gff3/homo_sapiens/Homo_sapiens.GRCh37.87.gff3.gz
+Ensembl GRCh37 latest https://ftp.ensembl.org/pub/grch37/release-108/gff3/homo_sapiens/Homo_sapiens.GRCh37.87.gff3.gz
+Ensembl GRCh38 latest https://ftp.ensembl.org/pub/current_gff3/homo_sapiens/Homo_sapiens.GRCh38.108.chr_patch_hapl_scaff.gff3.gz
+Ensembl T2T    latest https://ftp.ensembl.org/pub/rapid-release/species/Homo_sapiens/GCA_009914755.4/ensembl/geneset/2022_07/Homo_sapiens-GCA_009914755.4-2022_07-genes.gff3.gz
+"
+echo "$annotations" | sed '/^$/d' | while read -r source assembly version url; do
+    log "INFO" "Downloading $source annotation for $version version $assembly assembly.";
+    log "INFO" "Downloading from $url";
+
+    case "$source" in
+        "RefSeq")
+            wget -q -O- "$url" \
+                | zcat \
+                | awk -F"\t" \
+                    '
+                    /^#!/ {print}
+                    /^##/ {next}
+                    $3~/gene/ {
+                        # sub(/^NC_[0]+/, "chr");
+                        # sub(/^chr23/, "chrX"); sub(/^chr24/, "chrY");
+                        # split($1,chrom,".");
+                        split($9,info,"gene=");
+                        split(info[2],gene,";");
+                        # printf "%s\t%s\t%s\t%s\n", chrom[1], $4, $5, gene[1]}
+                        printf "%s\t%s\t%s\t%s\n", $1, $4, $5, gene[1]}' |
+                gzip -c > $source.$assembly.$version.bed.gz &&
+                log "INFO" "BED file created at $source.$assembly.$version.bed.gz" ||
+                log "ERROR" "An error occured while creating BED file at $source.$assembly.$version.bed.gz";
+            ;;
+        "Ensembl")
+            wget -q -O- "$url" | zcat | awk -F"\t" \
+                    '
+                    /^#!/ {print}
+                    /^##/ {next}
+                    $3~/gene/ {
+                        split($9,info,"Name=");
+                        split(info[2],gene,";");
+                        printf "chr%s\t%s\t%s\t%s\n", $1, $4, $5, gene[1]}' |
+                gzip -c > $source.$assembly.$version.bed.gz &&
+                log "INFO" "BED file created at $source.$assembly.$version.bed.gz" ||
+                log "ERROR" "An error occured while creating BED file at $source.$assembly.$version.bed.gz";
+            ;;
+    esac
+done
+
+#+end_src
+
+
+TODO Count the number of inputs and outputs.
+
+
+** Validate gene symbol
+Steps:
+1. Validate the gene symbol.
+   1. Check if the given symbol is in the approved symbols.
+   2. Check if the given symbol is an alias symbol.
+   3. Check if the given symbol is a previous symbol.
+   4. Check if the given symbol is withdrawn, split or merged.
+   5. Get the previous, alias or withdrawn symbols
+2. Check symbol in annotation sources.
+3. Check if prev, alias withdrawn symbols are in annotation sources.
+
+#+begin_src shell :tangle cross-symbol-checker.sh :shebang #!/bin/sh :comments both
+start=$(date +%s)
+
+set -o errexit
+set -o nounset
+if [ "${TRACE-0}" = "1" ]; then
+    set -o xtrace
+fi
+
+if [ "${1-}" = "help" ]; then
+    echo "Usage: ./cross-symbol-checker.sh symbol
+This script checks given symbol against every possible assembly
+
+-c --no-cross-check
+    Don't check annotation sources. Just check alternative gene symbols and exit.
+-h --help
+    Display this help message and exit.
+-V
+    Print current version and exit
+
+Functionality of the script can be further altered with environment variables.
+CSC_SOURCES
+    Limit which annotation sources to be used.
+CSC_ASSEMBLIES
+    Limit which assemblies sources to be used.
+CSC_VERSIONS
+    Limit which versions sources to be used.
+CSC_LOGLVL
+    Set log level. Default is INFO.
+"
+
+    exit
+fi
+
+cd "$(dirname "$0")"
+. ./logger.sh
+
+# Check if the data dir cached to /dev/shm
+CACHEDIR="/dev/shm/CSC_DATA"
+if [ -d $CACHEDIR ]; then
+    DATADIR="$CACHEDIR"
+    log "DEBUG" "Using the $CACHEDIR"
+else
+    DATADIR="./data"
+    log "DEBUG" "Using the default data dir"
+fi
+DATADIR="./data"
+
+# Cross checking is enabled by default.
+XCHECK=1
+
+PARSED_ARGUMENTS=$(getopt -a -o chV -l no-cross-check,help -- "$@")
+VALID_ARGUMENTS=$?
+if [ "$VALID_ARGUMENTS" != "0" ]; then
+    usage
+fi
+
+eval set -- "$PARSED_ARGUMENTS"
+while :; do
+    case "$1" in
+    -c | --no-cross-check)
+        XCHECK=0
+        shift
+        ;;
+    -h | --help)
+        usage
+        ;;
+    -V )
+        echo "Cross-symbol checker v0.0.2"
+        exit
+        ;;
+    # -- means the end of the arguments; drop this, and break out of the while loop
+    --)
+        shift
+        break
+        ;;
+    # If invalid options were passed, then getopt should have reported an error,
+    # which we checked as VALID_ARGUMENTS when getopt was called...
+    ,*)
+        echo "Unexpected option: $1 - this should not happen."
+        usage
+        ;;
+    esac
+done
+
 
 end=$(date +%s)
 runtime=$((end - start))
@@ -198,22 +272,54 @@ log "DEBUG" "TIME Startup took $runtime seconds"
 #+begin_src shell :tangle cross-symbol-checker.sh
 start=$(date +%s)
 
-if [ -z "${GSC_SOURCES-}" ]; then
+if [ -z "${CSC_SOURCES-}" ]; then
     sources="
     Ensembl
     RefSeq
     "
 else
-    sources="$GSC_SOURCES"
+    sources="$CSC_SOURCES"
 fi
-if [ -z "${GSC_ASSEMBLIES-}" ]; then
+if [ -z "${CSC_ASSEMBLIES-}" ]; then
     assemblies="
     GRCh37
     GRCh38
     T2T
     "
 else
-    assemblies="$GSC_ASSEMBLIES"
+    assemblies="$CSC_ASSEMBLIES"
+fi
+if [ -z "${CSC_VERSIONS-}" ]; then
+    versions="latest"
+    # Greps all of the versions
+    # versions=$(for source in $(echo "$sources"); do for assembly in $(echo "$assemblies"); do find data/ -name "$source.$assembly.*.bed.gz"; done ;done | cut -d"." -f3 | sort -u)
+else
+    versions="$CSC_VERSIONS"
+fi
+
+# targets will look like this:
+# source	assembly	version	file_path
+targets=""
+for source in $(echo "$sources"); do
+    for assembly in $(echo "$assemblies"); do
+        for version in $(echo "$versions"); do
+            target_path="$DATADIR/$source.$assembly.$version.bed.gz"
+            [ -f "$target_path" ] || continue
+            targets="$targets\n$source\t$assembly\t$version\t$target_path"
+        done
+    done
+done
+
+if [ -z "${CSC_TARGETS-}" ]; then
+    custom_targets=""
+else
+    for custom_target in $(echo "$CSC_TARGETS" | sort -u); do
+        # Here we check if file name has the format
+        # source.assembly.version.bed
+        custom_target_base="${custom_target##*/}"
+        echo ${custom_target_base} | awk -F"." '{print $1" "$2" "$3" "$4}' | read source assembly version bed
+        [ ${bed-} ] && targets="$targets\n$source\t$assembly\t$version\t$target_path" || targets="$targets\n$custom_target_base\tCustom\tCustom\t$custom_target"
+    done
 fi
 
 symbol=$(echo "$1" | tr '[:lower:]' '[:upper:]' | awk '/C([1-9]|1[0-9]|2[0-2]|X|Y)ORF[0-9]+/ {gsub("ORF", "orf", $0)} 1')
@@ -222,7 +328,7 @@ if [ "$symbol" != "$1" ]; then
 fi
 matches=""
 
-approved=$(zcat data/hgnc.gz | awk -F "\t" -v symbol=$symbol '$2==symbol {print}')
+approved=$(zcat -f $DATADIR/hgnc.gz | awk -F "\t" -v symbol=$symbol '$2==symbol {print}')
 if [ -z "$approved" ]; then
     # Symbol is not in approved list or not a valid symbol
     log "INFO" "$symbol is not in approved list :("
@@ -241,7 +347,7 @@ log "DEBUG" "TIME Checking approved symbol took $runtime seconds"
 #+begin_src shell :tangle cross-symbol-checker.sh
 start=$(date +%s)
 
-alias=$(zcat data/alias.gz | awk -F "\t" -v symbol=$symbol '$1==symbol {print}')
+alias=$(zcat -f $DATADIR/alias.gz | awk -F "\t" -v symbol=$symbol '$1==symbol {print}')
 if [ -z "$alias" ]; then
     # Symbol is not in alias or not a valid symbol
     log "INFO" "$symbol is not an alias symbol."
@@ -260,7 +366,7 @@ log "DEBUG" "TIME Checking alias symbol took $runtime seconds"
 #+begin_src shell :tangle cross-symbol-checker.sh
 start=$(date +%s)
 
-prev=$(zcat data/prev.gz | awk -F "\t" -v symbol=$symbol '$1==symbol {print}')
+prev=$(zcat -f $DATADIR/prev.gz | awk -F "\t" -v symbol=$symbol '$1==symbol {print}')
 if [ -z "$prev" ]; then
     # Symbol is not in previous symbols or not a valid symbol
     log "INFO" "$symbol is not a previous symbol."
@@ -279,7 +385,7 @@ log "DEBUG" "TIME Checking previous symbol took $runtime seconds"
 #+begin_src shell :tangle cross-symbol-checker.sh
 start=$(date +%s)
 
-withdrawn=$(zcat data/withdrawn.gz | awk -F "\t" -v symbol=$symbol '$3==symbol {print}')
+withdrawn=$(zcat -f $DATADIR/withdrawn.gz | awk -F "\t" -v symbol=$symbol '$3==symbol {print}')
 if [ -z "$withdrawn" ]; then
     # Symbol is not withdrawn or not a valid symbol
     log "INFO" "$symbol is not in withdrawn list."
@@ -399,7 +505,7 @@ log "DEBUG" "TIME Checking if any approved symbol found took $runtime seconds"
 start=$(date +%s)
 
 unset alias
-alias=$(zcat data/alias.gz | awk -F "\t" -v symbol=$approved_symbol '$2==symbol {print}')
+alias=$(zcat -f $DATADIR/alias.gz | awk -F "\t" -v symbol=$approved_symbol '$2==symbol {print}')
 if [ -z "$alias" ]; then
     # Symbol is not in alias or not a valid symbol
     log "INFO" "$approved_symbol has no alias symbol."
@@ -410,7 +516,7 @@ else
 fi
 
 unset prev
-prev=$(zcat data/prev.gz | awk -F "\t" -v symbol=$approved_symbol '$2==symbol {print}')
+prev=$(zcat -f $DATADIR/prev.gz | awk -F "\t" -v symbol=$approved_symbol '$2==symbol {print}')
 if [ -z "$prev" ]; then
     # Symbol is not in alias or not a valid symbol
     log "INFO" "$approved_symbol has no prev symbol."
@@ -421,7 +527,7 @@ else
 fi
 
 unset withdrawn
-withdrawn=$(zcat data/withdrawn.gz | (grep "|$approved_symbol|" || true))
+withdrawn=$(zcat -f $DATADIR/withdrawn.gz | (grep "|$approved_symbol|" || true))
 if [ -z "$withdrawn" ]; then
     # Symbol is not in alias or not a valid symbol
     log "INFO" "$approved_symbol has no withdrawn symbol."
@@ -441,63 +547,63 @@ log "DEBUG" "TIME Checking for other symbols took $runtime seconds"
 #+begin_src shell :tangle cross-symbol-checker.sh
 start=$(date +%s)
 
+[ $XCHECK = 0 ] && log "INFO" "--no-cross-check is set. Exiting without cross checking" && exit
 
 table=""
 if [ -z "$approved_symbol" ]; then
     log "INFO" "no approved symbol found so not checking annotation sources for approved symbol."
 else
-    for source in $(echo "$sources"); do
-        for assembly in $(echo "$assemblies"); do
+    while read -r source assembly version target_file; do
+        # Print out gff meta data
+        source_info=$(zcat -f "$target_file" | grep -m 3 '^#!' | sed "s/^#!/VERSION $source $assembly /")
+        echo "$source_info" | while read -r line; do log "INFO" "$line"; done
+        echo "$source_info"
 
-            # Print out gff meta data
-            source_info=$(zcat data/$source.$assembly.bed.gz | grep -m 3 '^#!' | sed "s/^#!/VERSION $source $assembly /")
-            echo "$source_info" | while read -r line; do log "INFO" "$line"; done
-            echo "$source_info"
+        # Get the non canonical chromosomes
+        if [ "$assembly" != "T2T" ]; then
+            case "$source" in
+                "RefSeq")
+                    noncanonical=$(zcat -f "$target_file" | grep -v "^#" | awk -F"\t" '{print $1}' | sort -u | grep -v '^NC');
+                    ;;
+                "Ensembl")
+                    noncanonical=$(zcat -f "$target_file" | grep -v '^#' | awk -F"\t" '{print $1}' | sort -u | grep -vE 'chr([1-9]|1[0-9]|2[0-2]|X|Y|MT)');
+                    ;;
+            esac
+        fi
 
-            # Get the non canonical chromosomes
-            if [ "$assembly" != "T2T" ]; then
-                case "$source" in
-                    "RefSeq")
-                        noncanonical=$(zcat "data/$source.$assembly.bed.gz" | grep -v "^#" | awk -F"\t" '{print $1}' | sort -u | grep -v '^NC');
-                        ;;
-                    "Ensembl")
-                        noncanonical=$(zcat "data/$source.$assembly.bed.gz" | grep -v '^#' | awk -F"\t" '{print $1}' | sort -u | grep -vE 'chr([1-9]|1[0-9]|2[0-2]|X|Y|MT)');
-                        ;;
-                esac
-            fi
+        while read -r status new_symbol; do
+            start_inner=$(date +%s%N)
+            if [ -n "${status-}" ]; then
+                match=$(zcat -f "$target_file" | (grep -m1 -w "$new_symbol" || true))
+                if [ -z "${match:-}" ]; then
+                    log "INFO" "$status SYMBOL $new_symbol found in $source $assembly $version"
+                    table=""$table"Absent\t$symbol\t$approved_symbol\t$new_symbol\t$status\t$source\t$assembly\t$version\n"
+                else
+                    # check_noncanonical
+                    for contig in $(echo "$noncanonical"); do
+                        if echo "$match" | grep -q "$contig"; then
+                            log "WARN" "Symbol $new_symbol not in a canonical chromosome in $source $assembly $version"
+                            echo "WARNING Symbol $new_symbol not in a canonical chromosome in $source $assembly $version"
+                        fi
+                    done
 
-            while read -r status new_symbol; do
-                start_inner=$(date +%s)
-                if [ -n "${status-}" ]; then
-                    match=$(zcat data/$source.$assembly.bed.gz | (grep -m1 -w "$new_symbol" || true))
-                    if [ -z "${match:-}" ]; then
-                        log "INFO" "$status SYMBOL $new_symbol found in $source $assembly"
-                        table=""$table"Absent\t$symbol\t$approved_symbol\t$new_symbol\t$status\t$source\t$assembly\n"
-                    else
-                        # check_noncanonical
-                        for contig in $(echo "$noncanonical"); do
-                            if echo "$match" | grep -q "$contig"; then
-                                log "WARN" "Symbol $new_symbol not in a canonical chromosome in $source $assembly"
-                                echo "WARNING Symbol $new_symbol not in a canonical chromosome in $source $assembly"
-                            fi
-                        done
-
-                        log "INFO" "$status SYMBOL $new_symbol not found in $source $assembly"
-                        table=""$table"Present\t$symbol\t$approved_symbol\t$new_symbol\t$status\t$source\t$assembly\t$match\n"
-                    fi
-
-                    end_inner=$(date +%s)
-                    runtime_inner=$((end_inner - start_inner))
-                    log "DEBUG" "TIME Checking annotation for approved took $runtime_inner seconds"
+                    log "INFO" "$status SYMBOL $new_symbol not found in $source $assembly $version"
+                    table=""$table"Present\t$symbol\t$approved_symbol\t$new_symbol\t$status\t$source\t$assembly\t$version\t$match\n"
                 fi
-            done <<-EOF
+
+            fi
+            end_inner=$(date +%s%N)
+            runtime_inner=$(( (end_inner - start_inner) / 1000000 ))
+            log "DEBUG" "TIME Checking $target_file for symbol $new_symbol took $runtime_inner milliseconds"
+        done <<-EOF
 $(echo "$approved_symbol"| sed 's/^/APPROVED\t/')
 ${prev_symbols-}
 ${alias_symbols-}
 ${withdrawn_symbols-}
 EOF
-        done
-    done
+    done <<-EOF
+$(echo ${targets-} | sed '/^$/d')
+EOF
 fi
 
 end=$(date +%s)
@@ -516,17 +622,38 @@ if [ "${TRACE-0}" = "1" ]; then
 fi
 
 if [ "${1-}" = "help" ]; then
-    echo 'Usage: ./script.sh arg-one arg-two
-
-This is an awesome bash script to make your life better.
-
+    echo 'Usage: ./check-geneset.sh symbol1 symbol2 -a T2T -s RefSeq -v latest
+-a --assembly
+    Default assemblies are GRCh37, GRCh38 and T2T.
+    You can use multiple assemblies by quoting them together like -a "GRCh37 GRCh38"
+-h --help
+    Display this help message and exit.
+-o --only-target
+    Without source, assembly, version parameters check-geneset.sh will run
+-s --source
+    Default assemblies are GRCh37, GRCh38 and T2T.
+    You can use multiple assemblies by quoting them together like -a "GRCh37 GRCh38"
+-t --target
+    Custom bed file. If file name has the format: source.assembly.version.bed,
+    columns in the output table will be filled accordingly.
+    Custom file should look like this:
+           chrom	start	end	symbol
+           chr1	1266694	1270686	TAS1R3
+           chr1	1270656	1284730	DVL1
+           chr1	1288069	1297157	MXRA8
+-v --version
+    There is only one version for all of the assemblies which is latest.
+    You can install older assemblies and specify them with this parameter.
+-V
+    Print current version and exit
 '
     exit
 fi
 
 cd "$(dirname "$0")"
+. ./logger.sh
 
-PARSED_ARGUMENTS=$(getopt -a -o s:a: -l source:,assembly: -- "$@")
+PARSED_ARGUMENTS=$(getopt -a -o a:hos:v:Vt: -l assembly:,help,only-target,source:,version:,target: -- "$@")
 VALID_ARGUMENTS=$?
 if [ "$VALID_ARGUMENTS" != "0" ]; then
     usage
@@ -535,13 +662,48 @@ fi
 eval set -- "$PARSED_ARGUMENTS"
 while :; do
     case "$1" in
-    -s | --source)
-        GSC_SOURCES="$2"
+    -a | --assembly)
+        CSC_ASSEMBLIES="$2"
         shift 2
         ;;
-    -a | --assembly)
-        GSC_ASSEMBLIES="$2"
+    -h | --help)
+        usage
+        ;;
+    -o | --only-target)
+        CSC_ASSEMBLIES="Unset"
+        CSC_SOURCES="Unset"
+        CSC_VERSIONS="Unset"
+        shift 1
+        ;;
+    -s | --source)
+        CSC_SOURCES="$2"
         shift 2
+        ;;
+    -t | --target)
+        CSC_TARGETS="$2"
+        shift 2
+        # Validate target files
+        for target in $(echo "$CSC_TARGETS"); do
+            [ -f "$target" ] && log "DEBUG" "Found target file $target." || (log "ERROR" "Can't find target file $target. exiting..." && exit 1)
+            target_col_number=$(zcat -f "$target" | grep -v '^#' | awk '{print NF}' | uniq)
+            [ $(echo "$target_col_number" | wc -l) -gt 1 ] && log "ERROR" "Mismatch in target column numbers for given target file $target. There are lines with $(echo "$target_col_number" | tr "\n" " ") columns. exiting..." && exit 1
+            [ "$target_col_number" -ne 4 ] && log "ERROR" "Target $target has $target_col_number number of columns. Custom target files should have 4 columns: chrom start end and symbol. exiting..." && exit 1
+            log "DEBUG" "Custom target $target looks okay."
+
+            # We are checking if there are any non valid symbols in the custom target file
+            # This takes quite some time if the target file is large.
+            # A multiprocessing approach can be beneficial here
+            # Another approach might be sorting the data files alphabetically spliting the files by first one or two characters and just searching the splitted file.
+            # [ $(zcat -f "$target" | grep -v '^#' | awk '{print $4}' | xargs -I% ./cross-symbol-checker.sh -c % | grep -m1 "#WARNING No approved symbol found") ] && log "ERROR" "Found a non valid symbol at target file $target. exiting..." && exit 1 || log "DEBUG" "Custom target file $target symbols looks okay."
+        done
+        ;;
+    -v | --version)
+        CSC_VERSIONS="$2"
+        shift 2
+        ;;
+    -V )
+        echo "Cross-symbol checker v0.0.2"
+        exit
         ;;
     # -- means the end of the arguments; drop this, and break out of the while loop
     --)
@@ -557,8 +719,14 @@ while :; do
     esac
 done
 
-export GSC_SOURCES
-export GSC_ASSEMBLIES
+
+export CSC_SOURCES
+export CSC_ASSEMBLIES
+export CSC_VERSIONS
+export CSC_TARGETS
+
+cp -r data/ /dev/shm/CSC_DATA || log "DEBUG" "Can't copy to tmpfs"
+
 
 main() {
     input_count=$(echo "$@" | wc -w)
@@ -575,7 +743,7 @@ main() {
                     warnings="$warnings#$line\n"
                     ;;
                 "TABLE	Present"* )
-                    rows="$rows$(echo "$line" | cut -f 3-11)\n"
+                    rows="$rows$(echo "$line" | cut -f 3-12)\n"
                     ;;
             esac
         done <<-EOF
@@ -596,14 +764,14 @@ EOF
         if [ $io_diff -gt 0 ]; then
             io_diff_message="#There are $io_diff more outputs then inputs! this might happen if there are more than one symbol (e.g. both approved and an alias) for gene in the annotation"
         elif [ $io_diff -lt 0 ]; then # This should not happen? Because there are no unmatched symbols
-            io_diff_message="#There are $(( io_diff * -1 )) more inputs then outputs. Check warnings for more info. This shouldn't have happened:?"
+            io_diff_message="#There are $(( io_diff * -1 )) more inputs then outputs. Check warnings for more info. The target doesn't have one or more symbols."
         else
             io_diff_message="#No difference between input and output counts."
         fi
     else
         unmatched_symbols_message="#There is/are $unmatched_symbols_count unmatched symbol(s)."
         if [ $io_diff -gt 0 ]; then
-            io_diff_message="#There are $io_diff more outputs then inputs! this might happen if there are more than one symbol (e.g. both approved and an alias) for gene in the annotation"
+            io_diff_message="#There are $io_diff more outputs then inputs! this might happen if there are more than one symbol (e.g. both approved and an alias) for gene in the annotation. Or if you selected multiple sources, assemblies or versions."
         elif [ $io_diff -lt 0 ]; then
             io_diff_message="#There are $(( io_diff * -1 )) more inputs then outputs. Check warnings for more info."
         else
@@ -618,6 +786,7 @@ EOF
 #Status: Status of the Symbol column. Either approved, alias, previous, or withdrawn.
 #Source: Annotation source.
 #Assembly: Target assembly.
+#Version: Version of the target source.
 #Chrom: name of the chromosome.
 #Start: start position of the gene.
 #End: end position of the gene.
@@ -625,56 +794,24 @@ EOF
 #Number of output symbols are $output_count
 $unmatched_symbols_message
 $io_diff_message"
-    echo "$(echo "$warnings" | sed "/^$/d" | grep . || echo "#There were no warnings.")"
+    echo "$(echo "$warnings" | sed "/^$/d" | grep . || echo "#There were no warnings about input symbols.")"
     if [ -z "${rows:-}" ]; then
         echo "No output was produced!"
     else
         echo "$(echo "$versions" | sed "/^$/d" | sort -u  | grep . || echo "#There is no version info")"
-        echo "Input_symbol\tApproved_symbol\tSymbol\tStatus\tSource\tAssembly\tChrom\tStart\tEnd"
+        echo "Input_symbol\tApproved_symbol\tSymbol\tStatus\tSource\tAssembly\tVersion\tChrom\tStart\tEnd"
         echo "$(echo "$rows" | sed "/^$/d")"
     fi
 }
 
 main "$@"
-
 #+end_src
-
 
 #+begin_src shell :tangle tests.sh :shebang #!/bin/sh
-dates="
-02/21/2018
-02/21/18
-21/02/2018
-21/02/18
-21-02-2018
-21-02-18
-02-21-2018
-02-21-18
-2018-02-21
-2/21/2018
-2/21/18
-21/2/2018
-21/2/18
-2-21-2018
-2-21-18
-21-2-2018
-21-2-18
-Feb 21, 2018
-February 21, 2018
-Feb 21, 2018
-February 21, 2018
-2018-02-21 12:00:00
-12:00:00
-2018-10-29 10:02:48 AM
-2018-10-29 07:30:20 PM
-"
-
-alias="
-"
-prev="
-"
-withdrawn="
-"
+test_nonexistent_target_file() {
+    nonexisting_file=$(mktemp)
+    rm non_existing_file
+    ./check_geneset SHFM -t "$nonexistent_target_file"
+}
+# TODO: write more tests
 #+end_src
-
-#+RESULTS:
