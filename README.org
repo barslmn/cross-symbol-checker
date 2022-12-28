@@ -22,14 +22,104 @@ Another script is ~check-geneset.sh~ which takes one or more gene and target ass
 
 *Example use:*
 Check single gene for all annotation sources:
+
 ~cross-symbol-checker.sh SHFM6~
 
 Check multiple genes for given annotation source:
+
 ~check-geneset.sh SHFM6 ADA2 -a GRCh37 -s RefSeq~
+
+Or check against a custom target:
+
+~check-geneset.sh SHFM6 ADA2 -a GRCh37 -s RefSeq -t my.target.bed.gz~
 
 *Example use with docker:*
 Check single gene for all annotation sources:
+
 ~docker run barslmn:cross-symbol-checker /opt/cross-symbol-checker/cross-symbol-checker.sh SHFM6~
 
 Check multiple genes for given annotation source:
+
 ~docker run barslmn:cross-symbol-checker /opt/cross-symbol-checker/check-geneset.sh SHFM6 ADA2 -a GRCh37 -s RefSeq~
+
+#+begin_src sh :results drawer
+./cross-symbol-checker.sh --help
+#+end_src
+
+#+RESULTS:
+:results:
+
+    Usage: ./cross-symbol-checker.sh symbol
+
+    This script checks given symbol against every possible assembly
+
+    -c --no-cross-check
+        Don't check annotation sources. Just check alternative gene symbols and exit.
+
+    -h --help
+        Display this help message and exit.
+
+    -V
+        Print current version and exit
+
+    Functionality of the script can be further altered with environment variables.
+    These are mainly used by check-geneset.sh.
+
+    CSC_SOURCES
+        Limit which annotation sources to be used.
+
+    CSC_ASSEMBLIES
+        Limit which assemblies sources to be used.
+
+    CSC_VERSIONS
+        Limit which versions sources to be used.
+
+    CSC_TARGETS
+        Custom target file.
+
+    CSC_LOGLVL
+        Set log level. Default is INFO.
+
+:end:
+
+#+begin_src sh :results drawer
+./check-geneset.sh --help
+#+end_src
+
+#+RESULTS:
+:results:
+
+    Usage: ./check-geneset.sh symbol1 symbol2 -a T2T -s RefSeq -v latest
+
+    -a --assembly
+        Default assemblies are GRCh37, GRCh38 and T2T.
+        You can use multiple assemblies by quoting them together like -a "GRCh37 GRCh38"
+
+    -h --help
+        Display this help message and exit.
+
+    -o --only-target
+        By default check-geneset.sh will run for every assembly. Use this option
+        to check only against given target file.
+
+    -s --source
+        Default assemblies are GRCh37, GRCh38 and T2T.
+        You can use multiple assemblies by quoting them together like -a "GRCh37 GRCh38"
+
+    -t --target
+        Custom bed file. If file name has the format: source.assembly.version.bed,
+        columns in the output table will be filled accordingly.
+        Custom file should look like this:
+               chrom	start	end	symbol
+               chr1	1266694	1270686	TAS1R3
+               chr1	1270656	1284730	DVL1
+               chr1	1288069	1297157	MXRA8
+
+    -v --version
+        There is only one version for all of the assemblies which is latest.
+        You can install older assemblies and specify them with this parameter.
+
+    -V
+        Print current version and exit
+
+:end:

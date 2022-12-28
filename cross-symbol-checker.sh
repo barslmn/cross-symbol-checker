@@ -20,29 +20,44 @@ if [ "${TRACE-0}" = "1" ]; then
     set -o xtrace
 fi
 
-if [ "${1-}" = "help" ]; then
-    echo "Usage: ./cross-symbol-checker.sh symbol
-This script checks given symbol against every possible assembly
+usage() {
+    echo "
+    Usage: ./cross-symbol-checker.sh symbol
 
--c --no-cross-check
-    Don't check annotation sources. Just check alternative gene symbols and exit.
--h --help
-    Display this help message and exit.
--V
-    Print current version and exit
+    This script checks given symbol against every possible assembly
 
-Functionality of the script can be further altered with environment variables.
-CSC_SOURCES
-    Limit which annotation sources to be used.
-CSC_ASSEMBLIES
-    Limit which assemblies sources to be used.
-CSC_VERSIONS
-    Limit which versions sources to be used.
-CSC_LOGLVL
-    Set log level. Default is INFO.
+    -c --no-cross-check
+        Don't check annotation sources. Just check alternative gene symbols and exit.
+
+    -h --help
+        Display this help message and exit.
+
+    -V
+        Print current version and exit
+
+    Functionality of the script can be further altered with environment variables.
+    These are mainly used by check-geneset.sh.
+
+    CSC_SOURCES
+        Limit which annotation sources to be used.
+
+    CSC_ASSEMBLIES
+        Limit which assemblies sources to be used.
+
+    CSC_VERSIONS
+        Limit which versions sources to be used.
+
+    CSC_TARGETS
+        Custom target file.
+
+    CSC_LOGLVL
+        Set log level. Default is INFO.
 "
-
     exit
+}
+
+if [ $# -eq 0 ]; then
+    usage
 fi
 
 cd "$(dirname "$0")"
@@ -149,8 +164,10 @@ else
         # Here we check if file name has the format
         # source.assembly.version.bed
         custom_target_base="${custom_target##*/}"
-        echo ${custom_target_base} | awk -F"." '{print $1" "$2" "$3" "$4}' | read source assembly version bed
-        [ ${bed-} ] && targets="$targets\n$source\t$assembly\t$version\t$target_path" || targets="$targets\n$custom_target_base\tCustom\tCustom\t$custom_target"
+        read source assembly version bed <<-EOF
+$(echo ${custom_target_base} | awk -F"." '{print $1" "$2" "$3" "$4}')
+EOF
+        [ -z ${bed-} ] && targets="$targets\n$custom_target_base\tCustom\tCustom\t$custom_target" || targets="$targets\n$source\t$assembly\t$version\t$custom_target"
     done
 fi
 
@@ -385,7 +402,7 @@ else
                     table=""$table"Absent\t$symbol\t$approved_symbol\t$new_symbol\t$status\t$source\t$assembly\t$version\n"
                 else
                     # check_noncanonical
-                    for contig in $(echo "$noncanonical"); do
+                    for contig in $(echo "${noncanonical-}"); do
                         if echo "$match" | grep -q "$contig"; then
                             log "WARN" "Symbol $new_symbol not in a canonical chromosome in $source $assembly $version"
                             echo "WARNING Symbol $new_symbol not in a canonical chromosome in $source $assembly $version"
@@ -395,7 +412,6 @@ else
                     log "INFO" "$status SYMBOL $new_symbol not found in $source $assembly $version"
                     table=""$table"Present\t$symbol\t$approved_symbol\t$new_symbol\t$status\t$source\t$assembly\t$version\t$match\n"
                 fi
-
             fi
             end_inner=$(date +%s%N)
             runtime_inner=$(( (end_inner - start_inner) / 1000000 ))
