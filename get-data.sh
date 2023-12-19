@@ -28,8 +28,8 @@ RefSeq  GRCh37 latest https://ftp.ncbi.nlm.nih.gov/refseq/H_sapiens/annotation/G
 RefSeq  GRCh38 latest https://ftp.ncbi.nlm.nih.gov/refseq/H_sapiens/annotation/GRCh38_latest/refseq_identifiers/GRCh38_latest_genomic.gff.gz
 RefSeq  T2T    latest https://ftp.ncbi.nlm.nih.gov/refseq/H_sapiens/annotation/annotation_releases/110/GCF_009914755.1_T2T-CHM13v2.0/GCF_009914755.1_T2T-CHM13v2.0_genomic.gff.gz
 Ensembl GRCh37 release97 https://ftp.ensembl.org/pub/grch37/release-97/gff3/homo_sapiens/Homo_sapiens.GRCh37.87.gff3.gz
-Ensembl GRCh37 latest https://ftp.ensembl.org/pub/grch37/release-108/gff3/homo_sapiens/Homo_sapiens.GRCh37.87.gff3.gz
-Ensembl GRCh38 latest https://ftp.ensembl.org/pub/current_gff3/homo_sapiens/Homo_sapiens.GRCh38.108.chr_patch_hapl_scaff.gff3.gz
+Ensembl GRCh37 latest https://ftp.ensembl.org/pub/grch37/release-109/gff3/homo_sapiens/Homo_sapiens.GRCh37.87.gff3.gz
+Ensembl GRCh38 latest https://ftp.ensembl.org/pub/current_gff3/homo_sapiens/Homo_sapiens.GRCh38.109.chr_patch_hapl_scaff.gff3.gz
 Ensembl T2T    latest https://ftp.ensembl.org/pub/rapid-release/species/Homo_sapiens/GCA_009914755.4/ensembl/geneset/2022_07/Homo_sapiens-GCA_009914755.4-2022_07-genes.gff3.gz
 "
 echo "$annotations" | sed '/^$/d' | while read -r source assembly version url; do
